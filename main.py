@@ -6,6 +6,15 @@ import json
 
 app = FastAPI()
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class CommentRequest(BaseModel):
@@ -40,3 +49,4 @@ async def analyze_comment(request: CommentRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
