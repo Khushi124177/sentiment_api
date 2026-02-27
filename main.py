@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
 import os
@@ -6,8 +7,7 @@ import json
 
 app = FastAPI()
 
-from fastapi.middleware.cors import CORSMiddleware
-
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,6 +15,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class CommentRequest(BaseModel):
@@ -32,7 +33,7 @@ async def analyze_comment(request: CommentRequest):
             messages=[
                 {
                     "role": "system",
-                    "content": "Analyze sentiment and respond ONLY in JSON format like: {\"sentiment\": \"positive\", \"rating\": 5}"
+                    "content": "Return ONLY valid JSON like {\"sentiment\":\"positive\",\"rating\":5}. No extra text."
                 },
                 {
                     "role": "user",
@@ -42,11 +43,22 @@ async def analyze_comment(request: CommentRequest):
             temperature=0
         )
 
-        content = completion.choices[0].message.content
-        result = json.loads(content)
+        content = completion.choices[0].message.content.strip()
+
+        # Safe JSON extraction
+        start = content.find("{")
+        end = content.rfind("}") + 1
+        json_string = content[start:end]
+
+        result = json.loads(json_string)
+
+        # Extra safety (avoid invalid values)
+        if result["sentiment"] not in ["positive", "negative", "neutral"]:
+            result["sentiment"] = "neutral"
+
+        result["rating"] = max(1, min(5, int(result["rating"])))
 
         return result
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail="Processing error")
