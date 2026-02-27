@@ -1,13 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from openai import OpenAI
-import os
-import json
 
 app = FastAPI()
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,8 +11,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class CommentRequest(BaseModel):
     comment: str
@@ -27,38 +21,30 @@ class CommentResponse(BaseModel):
 
 @app.post("/comment", response_model=CommentResponse)
 async def analyze_comment(request: CommentRequest):
-    try:
-        completion = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Return ONLY valid JSON like {\"sentiment\":\"positive\",\"rating\":5}. No extra text."
-                },
-                {
-                    "role": "user",
-                    "content": request.comment
-                }
-            ],
-            temperature=0
-        )
 
-        content = completion.choices[0].message.content.strip()
+    text = request.comment.lower()
 
-        # Safe JSON extraction
-        start = content.find("{")
-        end = content.rfind("}") + 1
-        json_string = content[start:end]
+    positive_words = ["good", "great", "amazing", "excellent", "love", "awesome"]
+    negative_words = ["bad", "worst", "terrible", "hate", "awful", "poor"]
 
-        result = json.loads(json_string)
+    score = 0
 
-        # Extra safety (avoid invalid values)
-        if result["sentiment"] not in ["positive", "negative", "neutral"]:
-            result["sentiment"] = "neutral"
+    for word in positive_words:
+        if word in text:
+            score += 1
 
-        result["rating"] = max(1, min(5, int(result["rating"])))
+    for word in negative_words:
+        if word in text:
+            score -= 1
 
-        return result
+    if score > 0:
+        sentiment = "positive"
+        rating = min(5, 3 + score)
+    elif score < 0:
+        sentiment = "negative"
+        rating = max(1, 3 + score)
+    else:
+        sentiment = "neutral"
+        rating = 3
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Processing error")
+    return {"sentiment": sentiment, "rating": rating}
